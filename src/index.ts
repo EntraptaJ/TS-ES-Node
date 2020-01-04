@@ -9,15 +9,24 @@ import globby from 'globby';
 
 const baseURL = pathToFileURL(process.cwd()).href;
 
+/**
+ * Array of TypeScript file extensions. This is also used to find imported TypeScript files since for some reason
+ * the extension can't be inferred by Node.JS' Resolver.
+ */
 const TS_EXTENSIONS = ['.ts', '.tsx'];
 
+/**
+ * Transpiles TypeScript source and loads the result ESNext code into the Node.JS VM
+ * @param sourcePathURLString Node.JS URL field for the source TypeScript file
+ * @returns Node.JS Experimental SourceTextModule with the resulting ESNext code
+ */
 async function transpileTypeScriptToModule(
-  url: string,
+  sourcePathURLString: string,
 ): Promise<SourceTextModule> {
-  const sourceFileURL = new URL(url);
-
+  const sourceFileURL = new URL(sourcePathURLString);
   const sourceFile = await fs.readFile(sourceFileURL);
 
+  // TypeScript code transpiled into ESNext.
   let transpiledModule = ts.transpileModule(sourceFile.toString(), {
     compilerOptions: {
       module: ts.ModuleKind.ESNext,
@@ -29,17 +38,28 @@ async function transpileTypeScriptToModule(
     reportDiagnostics: true,
   });
 
+  /**
+   * Using the NodeJS Experimental Modules we can convert the ESNext source into an ESModule
+   * and load it into the VM Context
+   * @see https://nodejs.org/api/vm.html#vm_class_vm_sourcetextmodule
+   */
+
   const sourceTextModule = new SourceTextModule(transpiledModule.outputText, {
     importModuleDynamically(specifier, parentModule) {
       return linker(specifier, parentModule);
     },
     initializeImportMeta(meta) {
-      meta.url = url;
+      meta.url = sourcePathURLString;
     },
   });
 
-  sourceTextModule.url = url;
+  /**
+   * We need to ensure the source path of the sourceTextModule is the path of the
+   * TypeScript source import for static and dynamic imports from the VM Module
+   */
+  sourceTextModule.url = sourcePathURLString;
 
+  // Ensure all imports are loaded into the context
   await sourceTextModule.link(linker);
 
   return sourceTextModule;
@@ -51,6 +71,9 @@ async function linker(
 ): Promise<SourceTextModule | SyntheticModule> {
   const { format, url } = await resolve(specifier, parentModule.url);
 
+  /**
+   * If the import is not TypeScript ("Dynamic soru")
+   */
   if (format === 'commonjs' || format === 'module') {
     const link = await import(url);
     const linkKeys = Object.keys(link);
@@ -72,11 +95,19 @@ export async function dynamicInstantiate(url: string) {
   };
 }
 
+/**
+ * This is a Node.JS ESM Expiremental loading gook
+ * @param specifier Pa
+ * @param parentModuleURL
+ * @param defaultResolverFn
+ */
 export async function resolve(
   specifier: string,
   parentModuleURL: string = baseURL,
   defaultResolverFn?: Function,
 ): Promise<ResolvedModule> {
+  const parentURL = new URL(parentModuleURL);
+
   if (builtinModules.includes(specifier)) {
     return {
       url: specifier,
@@ -98,7 +129,11 @@ export async function resolve(
 
   if (ext === '' && resolved.protocol === 'file:') {
     const possibleFiles = await globby(
-      `${resolved.pathname}{${TS_EXTENSIONS.join(',')}}`,
+      `${specifier}{${TS_EXTENSIONS.join(',')}}`,
+      {
+        cwd: path.dirname(parentURL.pathname),
+        absolute: true,
+      },
     );
     if (possibleFiles.length === 1) {
       return {

@@ -12,6 +12,9 @@ This is only tested to work on Node v13.5.0. I will test other versions soon, li
 ## Plans
 
 I want to cache the .ts file imports somewhat.
+
 See if it is possible to get HMR working
+
 Setup Jest Testing
+
 Setup GitHub actions to publish to Github Package Registry along with automated testing.
