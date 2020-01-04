@@ -5,9 +5,9 @@
   "main": "dist/index.js",
   "type": "module",
   "scripts": {
-    "test": "npm run build && npm run try",
-    "build": "tsc",
-    "try": "node --experimental-loader ./dist/index.js  --es-module-specifier-resolution=node --harmony-top-level-await --experimental-modules  --experimental-vm-modules src/test/stuff.ts"
+    "try": "npm run build && npm run runtry",
+    "build": "tsc --project ./tsconfig.build.json",
+    "runtry": "node --experimental-loader ./dist/index.js  --es-module-specifier-resolution=node --harmony-top-level-await --experimental-modules  --experimental-vm-modules try/index.ts"
   },
   "author": "",
   "license": "ISC",

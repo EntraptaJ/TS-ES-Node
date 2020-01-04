@@ -30,14 +30,17 @@ async function transpileTypeScriptToModule(
   });
 
   const sourceTextModule = new SourceTextModule(transpiledModule.outputText, {
-    importModuleDynamically(specifier) {
-      return import(specifier);
+    // @ts-ignore
+    importModuleDynamically(specifier, parentModule) {
+      // @ts-ignore
+      return linker(specifier, parentModule);
     },
     initializeImportMeta(meta) {
       // Note: this object is created in the top context. As such,
       // Object.getPrototypeOf(import.meta.prop) points to the
       // Object.prototype in the top context rather than that in
       // the sandbox.
+      import.meta.url = url;
     },
   });
 
