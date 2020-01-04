@@ -1,11 +1,11 @@
 // src/TS-ES-Node.ts
 import { promises as fs } from 'fs';
-import { builtinModules, ResolvedModule } from 'module';
+import globby from 'globby';
+import { ResolvedModule } from 'module';
 import path from 'path';
 import ts from 'typescript';
 import { pathToFileURL, URL } from 'url';
 import { SourceTextModule, SyntheticModule } from 'vm';
-import globby from 'globby';
 
 const baseURL = pathToFileURL(process.cwd()).href;
 
@@ -107,13 +107,6 @@ export async function resolve(
   defaultResolverFn?: Function,
 ): Promise<ResolvedModule> {
   const parentURL = new URL(parentModuleURL);
-
-  if (builtinModules.includes(specifier)) {
-    return {
-      url: specifier,
-      format: 'builtin',
-    };
-  }
 
   if (!/^\.{0,2}[/]/.test(specifier) && !specifier.startsWith('file:')) {
     if (defaultResolverFn) return defaultResolverFn(specifier, parentModuleURL);
