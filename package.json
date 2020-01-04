@@ -1,0 +1,22 @@
+{
+  "name": "ts-es-node",
+  "version": "0.0.1",
+  "description": "This is an experimental node loader hook",
+  "main": "dist/index.js",
+  "type": "module",
+  "scripts": {
+    "test": "npm run build && npm run try",
+    "build": "tsc",
+    "try": "node --experimental-loader ./dist/index.js  --es-module-specifier-resolution=node --harmony-top-level-await --experimental-modules  --experimental-vm-modules src/test/stuff.ts"
+  },
+  "author": "",
+  "license": "ISC",
+  "devDependencies": {
+    "@types/fs-extra": "^8.0.1",
+    "@types/node": "^13.1.2",
+    "fs-extra": "^8.1.0",
+    "globby": "^10.0.1",
+    "typescript": "^3.8.0-dev.20200103"
+  },
+  "dependencies": {}
+}
