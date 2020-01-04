@@ -2,7 +2,7 @@ declare module 'vm' {
   type Linker = (
     specifier: string,
     referencingModule: SourceTextModule,
-  ) => SourceTextModule | Promise<SourceTextModule>;
+  ) => Promise<SourceTextModule | SyntheticModule>;
 
   interface ModuleOptions {
     context?: Context;
@@ -34,7 +34,7 @@ declare module 'vm' {
       | 'errored';
     url: string;
 
-    link(linker: Linker): Promise<SourceTextModule>;
+    link(linker: Linker): Promise<SourceTextModule | SyntheticModule>;
     instantiate(): void;
     evaluate(options?: ModuleEvaluateOptions): Promise<{ result: unknown }>;
   }

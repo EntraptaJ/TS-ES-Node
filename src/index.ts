@@ -1,9 +1,9 @@
 // src/TS-ES-Node.ts
 import { promises as fs } from 'fs';
-import { builtinModules, ResolvedModule, Resolver } from 'module';
+import { builtinModules, ResolvedModule } from 'module';
 import path from 'path';
 import ts from 'typescript';
-import { pathToFileURL, URL, fileURLToPath } from 'url';
+import { pathToFileURL, URL } from 'url';
 import { SourceTextModule, SyntheticModule } from 'vm';
 import globby from 'globby';
 
@@ -30,29 +30,26 @@ async function transpileTypeScriptToModule(
   });
 
   const sourceTextModule = new SourceTextModule(transpiledModule.outputText, {
-    // @ts-ignore
     importModuleDynamically(specifier, parentModule) {
-      // @ts-ignore
       return linker(specifier, parentModule);
     },
     initializeImportMeta(meta) {
-      // Note: this object is created in the top context. As such,
-      // Object.getPrototypeOf(import.meta.prop) points to the
-      // Object.prototype in the top context rather than that in
-      // the sandbox.
-      import.meta.url = url;
+      meta.url = url;
     },
   });
 
   sourceTextModule.url = url;
-  // @ts-ignore
+
   await sourceTextModule.link(linker);
 
   return sourceTextModule;
 }
 
-async function linker(specifier: string, parentModule: { url: string }) {
-  const { format, url } = await resolver(specifier, parentModule.url);
+async function linker(
+  specifier: string,
+  parentModule: { url: string },
+): Promise<SourceTextModule | SyntheticModule> {
+  const { format, url } = await resolve(specifier, parentModule.url);
 
   if (format === 'commonjs' || format === 'module') {
     const link = await import(url);
@@ -63,7 +60,7 @@ async function linker(specifier: string, parentModule: { url: string }) {
     });
   } else if (format === 'dynamic') {
     return transpileTypeScriptToModule(url);
-  }
+  } else throw new Error('INVALID Import type');
 }
 
 export async function dynamicInstantiate(url: string) {
@@ -75,9 +72,10 @@ export async function dynamicInstantiate(url: string) {
   };
 }
 
-export async function resolver(
+export async function resolve(
   specifier: string,
   parentModuleURL: string = baseURL,
+  defaultResolverFn?: Function,
 ): Promise<ResolvedModule> {
   if (builtinModules.includes(specifier)) {
     return {
@@ -86,10 +84,9 @@ export async function resolver(
     };
   }
 
-  if (
-    /^\.{0,2}[/]/.test(specifier) !== true &&
-    !specifier.startsWith('file:')
-  ) {
+  if (!/^\.{0,2}[/]/.test(specifier) && !specifier.startsWith('file:')) {
+    if (defaultResolverFn) return defaultResolverFn(specifier, parentModuleURL);
+
     return {
       format: 'module',
       url: specifier,
@@ -107,53 +104,6 @@ export async function resolver(
       return {
         url: `file://${possibleFiles[0]}`,
         format: 'dynamic',
-      };
-    }
-  }
-
-  if (TS_EXTENSIONS.includes(ext)) {
-    return {
-      format: 'dynamic',
-      url: resolved.href,
-    };
-  }
-
-  return {
-    url: resolved.href,
-    format: 'module',
-  };
-}
-
-export async function resolve(
-  specifier: string,
-  parentModuleURL: string = baseURL,
-  defaultResolver: Resolver,
-): Promise<ResolvedModule> {
-  if (builtinModules.includes(specifier)) {
-    return {
-      url: specifier,
-      format: 'builtin',
-    };
-  }
-
-  if (
-    /^\.{0,2}[/]/.test(specifier) !== true &&
-    !specifier.startsWith('file:')
-  ) {
-    return defaultResolver(specifier, parentModuleURL);
-  }
-
-  const resolved = new URL(specifier, parentModuleURL);
-  const ext = path.extname(resolved.pathname);
-
-  if (ext === '' && resolved.protocol === 'file:') {
-    const possibleFiles = await globby(
-      `${resolved.pathname}{${TS_EXTENSIONS.join(',')}}`,
-    );
-    if (possibleFiles.length === 1) {
-      return {
-        format: 'dynamic',
-        url: possibleFiles[0],
       };
     }
   }
