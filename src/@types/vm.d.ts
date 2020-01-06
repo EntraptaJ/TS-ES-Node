@@ -20,6 +20,8 @@ declare module 'vm' {
     breakOnSigint?: boolean;
   }
 
+  type InstantiateReturn = { exports: string[]; execute: () => void };
+
   class SourceTextModule {
     constructor(code: string, options?: ModuleOptions);
 
@@ -49,7 +51,7 @@ declare module 'vm' {
   class SyntheticModule {
     constructor(
       exportNames: string[],
-      evaluateCallback: (this: SyntheticModule) => Promise<void>,
+      evaluateCallback: (this: SyntheticModule) => void,
       options?: Partial<SyntheticModuleOptions>,
     );
 

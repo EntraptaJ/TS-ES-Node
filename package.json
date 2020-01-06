@@ -1,6 +1,6 @@
 {
   "name": "@kristianfjones/ts-es-node",
-  "version": "0.0.5",
+  "version": "0.0.6",
   "description": "This is an experimental node loader hook",
   "main": "dist/index.js",
   "type": "module",
@@ -11,7 +11,8 @@
     "try": "npm run build && npm run runtry",
     "build": "tsc --project ./tsconfig.build.json",
     "runtry": "node --experimental-loader ./dist/index.js  --es-module-specifier-resolution=node --harmony-top-level-await --experimental-modules  --experimental-vm-modules try/index.ts",
-    "prepublishOnly": "npm run build"
+    "prepublishOnly": "npm run build",
+    "dev": "tsc --project ./tsconfig.build.json -w"
   },
   "author": {
     "name": "Kristian Jones",

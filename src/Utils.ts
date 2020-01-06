@@ -16,27 +16,34 @@ export function getRootPath(): string {
   return rootModulePath;
 }
 
+let tsConfigCache: CompilerOptions;
+
 /**
  * Finds the next closest `tsconfig.json`
  */
-export async function getTSConfig(
+export function getTSConfig(
   modulePath: string = rootModulePath,
-): Promise<CompilerOptions> {
+): CompilerOptions {
+  if (tsConfigCache) return tsConfigCache;
   const tsConfigPath = ts.findConfigFile(modulePath, ts.sys.fileExists);
 
   if (!tsConfigPath || !isAbsolutePath(tsConfigPath))
-    return {
+    tsConfigCache = {
       module: ts.ModuleKind.ESNext,
       target: ts.ScriptTarget.ESNext,
       moduleResolution: ts.ModuleResolutionKind.NodeJs,
       allowJs: true,
       skipLibCheck: true,
     };
+  else {
+    const tsConfigFile = ts.readConfigFile(tsConfigPath, ts.sys.readFile)
+      .config;
 
-  const tsConfigFile = ts.readConfigFile(tsConfigPath, ts.sys.readFile).config;
+    tsConfigCache = ts.convertCompilerOptionsFromJson(
+      tsConfigFile.compilerOptions,
+      dirname(tsConfigPath),
+    ).options;
+  }
 
-  return ts.convertCompilerOptionsFromJson(
-    tsConfigFile.compilerOptions,
-    dirname(tsConfigPath),
-  ).options;
+  return tsConfigCache;
 }
