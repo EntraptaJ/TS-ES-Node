@@ -4,8 +4,10 @@ import globby from 'globby';
 import { ResolvedModule } from 'module';
 import path from 'path';
 import ts from 'typescript';
-import { pathToFileURL, URL } from 'url';
-import { SourceTextModule, SyntheticModule } from 'vm';
+import { pathToFileURL, URL, fileURLToPath } from 'url';
+import { SourceTextModule, SyntheticModule, createContext } from 'vm';
+import { setRootPath, getTSConfig } from './Utils';
+import { createTSError } from './TypeScriptError';
 
 const baseURL = pathToFileURL(process.cwd()).href;
 
@@ -14,6 +16,10 @@ const baseURL = pathToFileURL(process.cwd()).href;
  * the extension can't be inferred by Node.JS' Resolver.
  */
 const TS_EXTENSIONS = ['.ts', '.tsx'];
+
+const moduleMap: Map<string, SourceTextModule> = new Map();
+
+const moduleContext = createContext(global);
 
 /**
  * Transpiles TypeScript source and loads the result ESNext code into the Node.JS VM
@@ -24,19 +30,33 @@ async function transpileTypeScriptToModule(
   sourcePathURLString: string,
 ): Promise<SourceTextModule> {
   const sourceFileURL = new URL(sourcePathURLString);
+  const sourceFilePath = fileURLToPath(sourceFileURL);
+
   const sourceFile = await fs.readFile(sourceFileURL);
+
+  setRootPath(path.dirname(sourceFilePath));
+
+  const tsConfig = await getTSConfig(path.dirname(sourceFilePath));
+
+  const compilerOptions: ts.CompilerOptions = {
+    ...tsConfig,
+    target: ts.ScriptTarget.ESNext,
+    module: ts.ModuleKind.ESNext,
+  };
+
+  const program = ts.createProgram([sourceFilePath], {
+    ...compilerOptions,
+    typeRoots: [],
+  });
+  const diagnostics = await ts.getPreEmitDiagnostics(program);
 
   // TypeScript code transpiled into ESNext.
   let transpiledModule = ts.transpileModule(sourceFile.toString(), {
-    compilerOptions: {
-      module: ts.ModuleKind.ESNext,
-      target: ts.ScriptTarget.ESNext,
-      moduleResolution: ts.ModuleResolutionKind.NodeJs,
-      allowJs: true,
-      skipLibCheck: true,
-    },
+    compilerOptions,
     reportDiagnostics: true,
   });
+
+  if (diagnostics.length) throw createTSError(diagnostics);
 
   /**
    * Using the NodeJS Experimental Modules we can convert the ESNext source into an ESModule
@@ -45,12 +65,16 @@ async function transpileTypeScriptToModule(
    */
 
   const sourceTextModule = new SourceTextModule(transpiledModule.outputText, {
-    importModuleDynamically(specifier, parentModule) {
-      return linker(specifier, parentModule);
+    async importModuleDynamically(specifier, parentModule) {
+      const dynamicModule = await linker(specifier, parentModule);
+      if ('link' in dynamicModule) await dynamicModule.link(linker);
+
+      return dynamicModule;
     },
     initializeImportMeta(meta) {
       meta.url = sourcePathURLString;
     },
+    context: moduleContext,
   });
 
   /**
@@ -58,9 +82,6 @@ async function transpileTypeScriptToModule(
    * TypeScript source import for static and dynamic imports from the VM Module
    */
   sourceTextModule.url = sourcePathURLString;
-
-  // Ensure all imports are loaded into the context
-  await sourceTextModule.link(linker);
 
   return sourceTextModule;
 }
@@ -72,31 +93,53 @@ async function linker(
   const { format, url } = await resolve(specifier, parentModule.url);
 
   /**
-   * If the import is not TypeScript ("Dynamic soru")
+   * If the import is not TypeScript ("Dynamic sortof")
    */
   if (format === 'commonjs' || format === 'module') {
-    const link = await import(url);
+    let link = await import(url);
+    if (link.default) link = { ...link.default, ...link };
+
     const linkKeys = Object.keys(link);
 
-    return new SyntheticModule(linkKeys, async function() {
-      for (const linkKey of linkKeys) this.setExport(linkKey, link[linkKey]);
-    });
+    return new SyntheticModule(
+      linkKeys,
+      async function() {
+        for (const linkKey of linkKeys) this.setExport(linkKey, link[linkKey]);
+      },
+      { context: moduleContext },
+    );
   } else if (format === 'dynamic') {
-    return transpileTypeScriptToModule(url);
+    if (moduleMap.has(url)) {
+      const cachedModule = moduleMap.get(url);
+      return cachedModule!;
+    }
+
+    const newModule = await transpileTypeScriptToModule(url);
+    moduleMap.set(url, newModule);
+
+    return newModule;
   } else throw new Error('INVALID Import type');
 }
 
 export async function dynamicInstantiate(url: string) {
-  const sourceTextModule = await transpileTypeScriptToModule(url);
+  try {
+    const sourceTextModule = await transpileTypeScriptToModule(url);
 
-  return {
-    exports: [],
-    execute: () => sourceTextModule.evaluate(),
-  };
+    // Ensure all imports are loaded into the context
+    await sourceTextModule.link(linker);
+
+    return {
+      exports: [],
+      execute: () => sourceTextModule.evaluate(),
+    };
+  } catch (err) {
+    console.error(err);
+    process.exit(0);
+  }
 }
 
 /**
- * This is a Node.JS ESM Expiremental loading gook
+ * This is a Node.JS ESM Experimental loading gook
  * @param specifier Pa
  * @param parentModuleURL
  * @param defaultResolverFn
@@ -106,9 +149,9 @@ export async function resolve(
   parentModuleURL: string = baseURL,
   defaultResolverFn?: Function,
 ): Promise<ResolvedModule> {
-  const parentURL = new URL(parentModuleURL);
+  const modTester = new RegExp('^.{0,2}[/]');
 
-  if (!/^\.{0,2}[/]/.test(specifier) && !specifier.startsWith('file:')) {
+  if (!modTester.test(specifier) && !specifier.startsWith('file:')) {
     if (defaultResolverFn) return defaultResolverFn(specifier, parentModuleURL);
 
     return {
@@ -124,10 +167,11 @@ export async function resolve(
     const possibleFiles = await globby(
       `${specifier}{${TS_EXTENSIONS.join(',')}}`,
       {
-        cwd: path.dirname(parentURL.pathname),
+        cwd: path.dirname(fileURLToPath(parentModuleURL)),
         absolute: true,
       },
     );
+
     if (possibleFiles.length === 1) {
       return {
         url: `file://${possibleFiles[0]}`,

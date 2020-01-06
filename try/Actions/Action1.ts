@@ -16,3 +16,8 @@ export async function runActions(): Promise<{
   ]);
   return { result1, result2 };
 }
+
+
+export async function action2Sub(): Promise<string> {
+  return 'helloWorld'
+}

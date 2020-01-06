@@ -1,4 +1,6 @@
 declare module 'vm' {
+  import { Context } from 'vm';
+
   type Linker = (
     specifier: string,
     referencingModule: SourceTextModule,
@@ -39,10 +41,16 @@ declare module 'vm' {
     evaluate(options?: ModuleEvaluateOptions): Promise<{ result: unknown }>;
   }
 
+  interface SyntheticModuleOptions {
+    identifer: string;
+    context: Context;
+  }
+
   class SyntheticModule {
     constructor(
       exportNames: string[],
       evaluateCallback: (this: SyntheticModule) => Promise<void>,
+      options?: Partial<SyntheticModuleOptions>,
     );
 
     setExport: (exportName: string, thing: any) => void;
