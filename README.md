@@ -1,5 +1,8 @@
 # TS-ES-Node
 
+
+## This module has been rewritten and moved to [@K-FOSS/TS-ESNode](https://github.com/K-FOSS/TS-ESNode)
+
 This is an experimental Node.JS ESModule loader hook to transpile TypeScript into ESNext during module resolution
 
 ```
